@@ -1,7 +1,9 @@
 # 添加时间限制
 import datetime
 import glob
-
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 # 设置时间限制
 limit_date = datetime.datetime(2025, 3, 8)
 current_date = datetime.datetime.now()
