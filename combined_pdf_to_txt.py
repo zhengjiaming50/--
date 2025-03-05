@@ -45,16 +45,32 @@ def process_image(image_path):
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(result_text)
 
-def find_pdfs_and_convert_to_images_and_text(folder_path):
-    pdf_files = []
+def find_and_process_files(folder_path):
+    files_to_process = []
+    # 支持的图片格式
+    image_extensions = {'.png', '.jpg', '.jpeg', '.tiff', '.bmp'}
+    
     for root, _, files in os.walk(folder_path):
         for file in files:
-            if file.lower().endswith('.pdf'):
-                pdf_files.append(os.path.join(root, file))
+            file_lower = file.lower()
+            file_path = os.path.join(root, file)
+            if file_lower.endswith('.pdf'):
+                files_to_process.append(('pdf', file_path))
+            elif any(file_lower.endswith(ext) for ext in image_extensions):
+                files_to_process.append(('image', file_path))
 
-    for pdf_path in tqdm(pdf_files, desc="Processing PDFs"):
-        pdf_to_images_and_extract_text(pdf_path)
+    for file_type, file_path in tqdm(files_to_process, desc="Processing files"):
+        if file_type == 'pdf':
+            pdf_to_images_and_extract_text(file_path)
+        else:
+            # 对于图片文件，直接进行OCR处理
+            # 生成在output_text_folder中的输出文件名
+            output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}.txt"
+            output_path = os.path.join(output_text_folder, output_filename)
+            # 如果输出文件不存在，则处理图片
+            if not os.path.exists(output_path):
+                process_image(file_path)
 
 if __name__ == "__main__":
-    folder_path = os.path.join(os.path.dirname(__file__), "pdf")  # 替换为你的文件夹路径
-    find_pdfs_and_convert_to_images_and_text(folder_path) 
+    folder_path = os.path.join(os.path.dirname(__file__), "pdf")
+    find_and_process_files(folder_path)
