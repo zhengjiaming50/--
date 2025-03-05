@@ -3,7 +3,7 @@ import datetime
 import glob
 
 # 设置时间限制
-limit_date = datetime.datetime(2025, 3, 5)
+limit_date = datetime.datetime(2025, 3, 8)
 current_date = datetime.datetime.now()
 
 if current_date > limit_date:
@@ -25,7 +25,7 @@ md_folder_path = "md_output"  # 添加MD文件夹路径
 os.makedirs(folder_path, exist_ok=True)  # 新增目录创建
 
 # 设置要查找的关键词列表 - 包含这些关键词的MD文件会被选中作为参考
-keywords = ["使用林地因子调查表"]  # 自定义关键词列表
+keywords = ["林地按使用林地类型面积蓄积统计表","使用林地因子调查表"]  # 自定义关键词列表
 
 # 读取匹配关键词的所有md文件并合并内容
 def read_filtered_md_files(folder_path, keywords):
@@ -47,7 +47,7 @@ def read_filtered_md_files(folder_path, keywords):
     # 获取所有md文件
     md_files = glob.glob(os.path.join(folder_path, "*.md"))
     
-    # 静默过滤大文件（100KB限制）
+    # 静默过滤大文件（200KB限制）
     MAX_SIZE_KB = 200
     md_files = [f for f in md_files if os.path.getsize(f) <= MAX_SIZE_KB * 1024]
     

@@ -46,7 +46,19 @@ def excel_to_md(excel_file, output_dir=OUTPUT_FOLDER):
             md_content = f"# {file_title}\n\n"
             
             # 将所有数据转换为markdown表格（包括标题行）
-            md_content += df.to_markdown(index=False)
+            # 修改这里：添加tablefmt参数和colalign参数来减少空格
+            md_content += df.to_markdown(index=False, tablefmt='pipe', colalign=['left']*len(df.columns))
+            
+            # 进一步处理，移除多余空格
+            lines = md_content.split('\n')
+            for i in range(len(lines)):
+                # 替换连续的空格为单个空格，并移除|后和|前的空格
+                lines[i] = re.sub(r'\|\s+', '|', lines[i])
+                lines[i] = re.sub(r'\s+\|', '|', lines[i])
+                # 替换nan为空字符串
+                lines[i] = lines[i].replace('|nan', '|')
+            
+            md_content = '\n'.join(lines)
             
             # 保存为md文件 - 清理文件名中的非法字符
             safe_title = re.sub(r'[\\/*?:"<>|]', "_", file_title)

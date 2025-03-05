@@ -39,6 +39,10 @@ def read_filtered_md_files(folder_path, keywords):
     # 获取所有md文件
     md_files = glob.glob(os.path.join(folder_path, "*.md"))
     
+    # 静默过滤大文件（200KB限制）
+    MAX_SIZE_KB = 200
+    md_files = [f for f in md_files if os.path.getsize(f) <= MAX_SIZE_KB * 1024]
+        
     if not md_files:
         print(f"警告: 在 '{folder_path}' 目录中未找到任何MD文件!")
         return all_text
@@ -147,4 +151,4 @@ try:
 
 except Exception as e:
     print(f"错误类型: {type(e).__name__}")
-    print(f"错误详情: {str(e)}") 
+    print(f"错误详情: {str(e)}")
