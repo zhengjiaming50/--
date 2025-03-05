@@ -4,6 +4,44 @@ import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
+import logging
+import datetime
+from io import StringIO
+
+class ConsoleHandler(logging.Handler):
+    """Custom logging handler that outputs to a Tkinter Text widget"""
+    def __init__(self, text_widget):
+        logging.Handler.__init__(self)
+        self.text_widget = text_widget
+        
+        # Configure formatter with timestamp and level
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', 
+                                     datefmt='%Y-%m-%d %H:%M:%S')
+        self.setFormatter(formatter)
+    
+    def emit(self, record):
+        msg = self.format(record)
+        
+        # Colorize different log levels
+        tag = None
+        if record.levelno >= logging.ERROR:
+            tag = "error"
+        elif record.levelno >= logging.WARNING:
+            tag = "warning"
+        elif record.levelno >= logging.INFO:
+            tag = "info"
+        elif record.levelno >= logging.DEBUG:
+            tag = "debug"
+        
+        def _insert():
+            if tag:
+                self.text_widget.insert(tk.END, msg + "\n", tag)
+            else:
+                self.text_widget.insert(tk.END, msg + "\n")
+            self.text_widget.see(tk.END)
+        
+        # Schedule in the main thread
+        self.text_widget.after(0, _insert)
 
 class ScriptManagerApp:
     def __init__(self, root):
@@ -36,11 +74,12 @@ class ScriptManagerApp:
         self.setup_report_tab()
         self.setup_merge_tab()
         
-        # Console output
+        # Setup console with advanced logging
         console_frame = ttk.LabelFrame(main_frame, text="运行日志")
         console_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
-        self.console = tk.Text(console_frame, height=10, wrap=tk.WORD)
+        # Create a Text widget with scrollbar for console output
+        self.console = tk.Text(console_frame, height=15, wrap=tk.WORD)
         self.console.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Add scrollbar to console
@@ -48,8 +87,14 @@ class ScriptManagerApp:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.console.config(yscrollcommand=scrollbar.set)
         
-        # Redirect stdout to the console
-        sys.stdout = TextRedirector(self.console)
+        # Configure text tags for different log levels
+        self.console.tag_configure("error", foreground="red")
+        self.console.tag_configure("warning", foreground="orange")
+        self.console.tag_configure("info", foreground="black")
+        self.console.tag_configure("debug", foreground="gray")
+        
+        # Set up logging
+        self.setup_logging()
         
     def setup_pdf_tab(self):
         # PDF processing tab
@@ -180,31 +225,80 @@ class ScriptManagerApp:
         if folder:
             string_var.set(folder)
     
-    def run_script(self, script_name):
-        def execute():
-            try:
-                self.console.insert(tk.END, f"正在运行 {script_name}...\n")
-                process = subprocess.Popen([sys.executable, script_name], 
-                                          stdout=subprocess.PIPE, 
-                                          stderr=subprocess.PIPE,
-                                          universal_newlines=True)
-                
-                while True:
-                    output = process.stdout.readline()
-                    if output == '' and process.poll() is not None:
-                        break
-                    if output:
-                        self.console.insert(tk.END, output)
-                        self.console.see(tk.END)
-                        self.root.update()
-                
-                rc = process.poll()
-                self.console.insert(tk.END, f"{script_name} 执行完毕，返回代码: {rc}\n")
-                
-            except Exception as e:
-                self.console.insert(tk.END, f"错误: {str(e)}\n")
+    def setup_logging(self):
+        """Set up the logging system"""
+        # Create logger
+        self.logger = logging.getLogger('ScriptManager')
+        self.logger.setLevel(logging.DEBUG)
         
-        threading.Thread(target=execute).start()
+        # Create console handler and set level
+        console_handler = ConsoleHandler(self.console)
+        console_handler.setLevel(logging.DEBUG)
+        
+        # Add handler to logger
+        self.logger.addHandler(console_handler)
+        
+        # Optionally add file handler to save logs to file
+        log_dir = "logs"
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = os.path.join(log_dir, f"log_{timestamp}.txt")
+        
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setLevel(logging.DEBUG)
+        file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(file_formatter)
+        
+        self.logger.addHandler(file_handler)
+        
+        self.logger.info("===== 应用程序启动 =====")
+        self.logger.info(f"日志文件: {log_file}")
+    
+    def run_script(self, script_name):
+        """Run a Python script and capture detailed output"""
+        def execute():
+            self.logger.info(f"开始执行脚本: {script_name}")
+            
+            try:
+                process = subprocess.Popen(
+                    [sys.executable, script_name],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    bufsize=1,
+                    universal_newlines=True
+                )
+                
+                # Create reader threads for stdout and stderr
+                def read_stdout():
+                    for line in iter(process.stdout.readline, ''):
+                        self.logger.info(f"[输出] {line.rstrip()}")
+                
+                def read_stderr():
+                    for line in iter(process.stderr.readline, ''):
+                        self.logger.error(f"[错误] {line.rstrip()}")
+                
+                # Start reader threads
+                stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+                stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+                stdout_thread.start()
+                stderr_thread.start()
+                
+                # Wait for completion
+                stdout_thread.join()
+                stderr_thread.join()
+                
+                return_code = process.wait()
+                if return_code == 0:
+                    self.logger.info(f"脚本 {script_name} 执行成功 (返回代码: {return_code})")
+                else:
+                    self.logger.warning(f"脚本 {script_name} 执行结束，但返回代码非零 (返回代码: {return_code})")
+                    
+            except Exception as e:
+                self.logger.error(f"执行脚本 {script_name} 时发生错误: {str(e)}")
+        
+        threading.Thread(target=execute, daemon=True).start()
     
     def run_selected_report(self):
         selection = self.report_listbox.curselection()
@@ -222,6 +316,7 @@ class ScriptManagerApp:
         self.run_script(script_path)
     
     def run_merge(self):
+        """Run the merge script with command-line arguments"""
         def execute():
             try:
                 cmd = [
@@ -235,42 +330,45 @@ class ScriptManagerApp:
                 if self.add_filename.get():
                     cmd.append("--add-filename")
                 
-                self.console.insert(tk.END, f"正在运行: {' '.join(cmd)}\n")
-                process = subprocess.Popen(cmd, 
-                                          stdout=subprocess.PIPE, 
-                                          stderr=subprocess.PIPE,
-                                          universal_newlines=True)
+                self.logger.info(f"开始执行合并命令: {' '.join(cmd)}")
                 
-                while True:
-                    output = process.stdout.readline()
-                    if output == '' and process.poll() is not None:
-                        break
-                    if output:
-                        self.console.insert(tk.END, output)
-                        self.console.see(tk.END)
-                        self.root.update()
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    bufsize=1,
+                    universal_newlines=True
+                )
                 
-                rc = process.poll()
-                self.console.insert(tk.END, f"合并文件执行完毕，返回代码: {rc}\n")
+                # Create reader threads for stdout and stderr
+                def read_stdout():
+                    for line in iter(process.stdout.readline, ''):
+                        self.logger.info(f"[输出] {line.rstrip()}")
                 
+                def read_stderr():
+                    for line in iter(process.stderr.readline, ''):
+                        self.logger.error(f"[错误] {line.rstrip()}")
+                
+                # Start reader threads
+                stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+                stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+                stdout_thread.start()
+                stderr_thread.start()
+                
+                # Wait for completion
+                stdout_thread.join()
+                stderr_thread.join()
+                
+                return_code = process.wait()
+                if return_code == 0:
+                    self.logger.info(f"合并文件执行成功 (返回代码: {return_code})")
+                else:
+                    self.logger.warning(f"合并文件执行结束，但返回代码非零 (返回代码: {return_code})")
+                    
             except Exception as e:
-                self.console.insert(tk.END, f"错误: {str(e)}\n")
+                self.logger.error(f"执行合并命令时发生错误: {str(e)}")
         
-        threading.Thread(target=execute).start()
-
-class TextRedirector:
-    def __init__(self, text_widget):
-        self.text_widget = text_widget
-        self.buffer = ""
-
-    def write(self, string):
-        self.buffer += string
-        self.text_widget.insert(tk.END, string)
-        self.text_widget.see(tk.END)
-        self.text_widget.update()
-
-    def flush(self):
-        pass
+        threading.Thread(target=execute, daemon=True).start()
 
 if __name__ == "__main__":
     root = tk.Tk()
