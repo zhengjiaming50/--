@@ -7,13 +7,33 @@ import glob
 INPUT_FOLDER = 'excel_files'  # 输入文件夹，存放Excel文件
 OUTPUT_FOLDER = os.path.join('code', 'md_output')   # 输出到程序根目录下的code文件夹
 
-def excel_to_md(excel_file, output_dir=OUTPUT_FOLDER):
-    """将单个Excel文件中的所有表转换为Markdown文件"""
+def excel_to_md(excel_file, output_dir=OUTPUT_FOLDER, filter_method='default', columns_to_exclude=None, columns_to_keep=None, exclude_patterns=None, target_table_pattern='建设项目使用林地因子调查表'):
+    """将单个Excel文件中的指定表转换为Markdown文件
+    
+    参数:
+        excel_file (str): Excel文件路径
+        output_dir (str): 输出目录
+        filter_method (str): 过滤方法，可选值为 'default', 'exclude', 'include', 'pattern'
+        columns_to_exclude (list): 要排除的列索引列表 (基于0的索引)
+        columns_to_keep (list): 要保留的列索引列表 (基于0的索引)
+        exclude_patterns (list): 要排除的列名模式列表 (正则表达式)
+        target_table_pattern (str): 目标表格标题的匹配模式
+    """
     # 创建输出目录
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
     print(f"处理文件: {excel_file}")
+    
+    # 设置默认值
+    if columns_to_exclude is None:
+        columns_to_exclude = []  # 例如 [16, 17] 表示排除第17和18列(0-based索引)
+    
+    if columns_to_keep is None:
+        columns_to_keep = []  # 例如 [0, 1, 2, 3] 表示只保留前4列
+    
+    if exclude_patterns is None:
+        exclude_patterns = []  # 例如 ['保护等级', '备注']
     
     try:
         # 读取Excel文件中的所有表
@@ -27,26 +47,55 @@ def excel_to_md(excel_file, output_dir=OUTPUT_FOLDER):
             df = pd.read_excel(excel, sheet_name=sheet_name, header=None)
             
             # 如果表为空则跳过
-            if df.empty or len(df) < 1:
-                print(f"  表 {sheet_name} 为空，已跳过")
+            if df.empty or len(df) < 2:  # 确保至少有两行(标题行和列头行)
+                print(f"  表 {sheet_name} 行数不足，已跳过")
                 continue
-                
-            # 获取第一行第一个单元格作为文件名和标题
-            # 这里会提取合并单元格的值，因为合并单元格的值通常出现在第一个位置
-            file_title = str(df.iloc[0, 0]).strip()
             
-            # 如果标题为空，则使用sheet名称
-            if not file_title or pd.isna(file_title):
-                file_title = sheet_name
-                print(f"  表 {sheet_name} 第一行第一列为空，使用表名作为文件名")
-            else:
-                print(f"  提取到标题: {file_title}")
+            # 检查这个表是否是我们要找的"建设项目使用林地因子调查表"
+            title = str(df.iloc[0, 0]).strip()
+            if not re.search(target_table_pattern, title):
+                print(f"  表 {sheet_name} 标题 '{title}' 不匹配目标模式 '{target_table_pattern}'，已跳过")
+                continue
+            
+            print(f"  找到目标表: {title}")
+            
+            # 应用列过滤方法
+            if filter_method == 'exclude' and columns_to_exclude:
+                # 方案一：排除指定列索引
+                print(f"  使用排除列索引方案，排除列: {columns_to_exclude}")
+                all_columns = list(range(len(df.columns)))
+                filtered_columns = [col for col in all_columns if col not in columns_to_exclude]
+                df = df.iloc[:, filtered_columns]
+                
+            elif filter_method == 'include' and columns_to_keep:
+                # 方案二：只保留指定列索引
+                print(f"  使用保留列索引方案，保留列: {columns_to_keep}")
+                df = df.iloc[:, columns_to_keep]
+                
+            elif filter_method == 'pattern' and exclude_patterns:
+                # 方案三：基于第二行（索引1）列标题内容排除列
+                print(f"  使用列标题模式排除方案，排除包含: {exclude_patterns}")
+                # 获取第二行作为列标题 (索引1)
+                header_row = df.iloc[1]
+                cols_to_drop = []
+                
+                # 检查每一列的标题
+                for col_idx, col_value in enumerate(header_row):
+                    col_str = str(col_value)
+                    # 如果列标题匹配任何排除模式，记录该列索引
+                    if any(re.search(pattern, col_str) for pattern in exclude_patterns):
+                        cols_to_drop.append(col_idx)
+                
+                if cols_to_drop:
+                    print(f"  根据模式排除列索引: {cols_to_drop}")
+                    all_columns = list(range(len(df.columns)))
+                    filtered_columns = [col for col in all_columns if col not in cols_to_drop]
+                    df = df.iloc[:, filtered_columns]
             
             # 构建markdown内容
-            md_content = f"# {file_title}\n\n"
+            md_content = f"# {title}\n\n"
             
             # 将所有数据转换为markdown表格（包括标题行）
-            # 修改这里：添加tablefmt参数和colalign参数来减少空格
             md_content += df.to_markdown(index=False, tablefmt='pipe', colalign=['left']*len(df.columns))
             
             # 进一步处理，移除多余空格
@@ -61,7 +110,7 @@ def excel_to_md(excel_file, output_dir=OUTPUT_FOLDER):
             md_content = '\n'.join(lines)
             
             # 保存为md文件 - 清理文件名中的非法字符
-            safe_title = re.sub(r'[\\/*?:"<>|]', "_", file_title)
+            safe_title = re.sub(r'[\\/*?:"<>|]', "_", title)
             file_path = os.path.join(output_dir, f"{safe_title}.md")
             
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -90,9 +139,21 @@ def process_all_excel_files():
     
     print(f"找到 {len(excel_files)} 个Excel文件")
     
-    # 处理每个Excel文件
+    # 提供三种方案示例
+    print("\n=== 以下是三种过滤方案，请选择一种取消注释使用 ===")
+    
     for excel_file in excel_files:
-        excel_to_md(excel_file)
+        # 方案一：直接排除指定列索引（适合当您知道列索引的情况）
+        # 例如排除第20, 21, 22列（0-based索引，根据您的表格实际情况调整）
+        # excel_to_md(excel_file, filter_method='exclude', columns_to_exclude=[19, 20, 21])
+        
+        # 方案二：只保留指定列（适合当您知道要保留哪些列的情况）
+        # 例如只保留前19列（根据您的表格实际情况调整）
+        # excel_to_md(excel_file, filter_method='include', columns_to_keep=list(range(19)))
+        
+        # 方案三：根据列名排除（最灵活的方案，推荐使用）
+        # 自动查找并排除包含以下关键词的列
+        excel_to_md(excel_file, filter_method='pattern', exclude_patterns=['保护等级', '备注', '原森林类型'])
     
     print(f"所有Excel文件处理完成！请在 {os.path.abspath(OUTPUT_FOLDER)} 查看生成的Markdown文件。")
 
