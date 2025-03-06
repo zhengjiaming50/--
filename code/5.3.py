@@ -13,7 +13,7 @@ client = OpenAI(
 md_folder_path = "md_output"  # 直接使用相对路径
 
 # 修改关键词列表为精确匹配内容
-keywords = ["建设项目使用林地森林植被恢复费计算表"]  # 核心特征词
+keywords = ["项目使用林地森林植被恢复费"]  # 核心特征词
 
 # 读取匹配关键词的所有md文件并合并内容
 def read_filtered_md_files(folder_path, keywords):
@@ -115,7 +115,7 @@ prompt_content = (
 商品林地按地类分：  
 ▸ 乔木林地：[X]㎡×10元/㎡=[金额计算]元=_[万元转换]_  
 ...（其他地类同理）  
-森林植被恢复费小计：Σ[万元值]万元  
+森林植被恢复费小计：[万元值]万元  
 """
 )
 

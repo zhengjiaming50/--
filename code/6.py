@@ -3,7 +3,7 @@ import datetime
 import glob
 
 # 设置时间限制
-limit_date = datetime.datetime(2025, 3, 5)
+limit_date = datetime.datetime(2025, 3, 8)
 current_date = datetime.datetime.now()
 
 if current_date > limit_date:
@@ -24,7 +24,7 @@ md_folder_path = "md_output"  # 添加MD文件夹路径
 os.makedirs(folder_path, exist_ok=True)  # 新增目录创建
 
 # 设置要查找的关键词列表 - 包含这些关键词的MD文件会被选中作为参考
-keywords = ["使用林地森林植被恢复费计算表"]  # 自定义关键词列表
+keywords = ["项目使用林地森林植被恢复费"]  # 自定义关键词列表
 
 # 读取匹配关键词的所有md文件并合并内容
 def read_filtered_md_files(folder_path, keywords):
@@ -207,7 +207,7 @@ try:
     project_root = os.path.dirname(os.path.dirname(__file__))
     output_dir = os.path.join(project_root, 'output_reports')
     os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, '1.1.txt')
+    output_file = os.path.join(output_dir, '6.txt')
     
     with open(output_file, 'w', encoding='utf-8') as f:
         for chunk in stream:
